@@ -34,6 +34,7 @@ import {
 } from "@/components/agent-groups/group-thread-panel";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { ChatAttachmentPanelProvider } from "@/context/chat-attachment-panel-context";
+import { useAuth } from "@/context/use-auth";
 import {
   PENDING_RUN,
   pendingMessage,
@@ -233,6 +234,7 @@ function GroupHeader({
   group: AgentGroup;
   members: ProfileSummary[];
 }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
 
@@ -247,7 +249,10 @@ function GroupHeader({
         <MessageAdd01Icon aria-hidden />
         <span className="@max-md:sr-only max-sm:sr-only">New chat</span>
       </Button>
-      <GroupActionsMenu onEdit={() => setEditing(true)} />
+      <GroupActionsMenu
+        canEdit={group.ownerUserId === user?.id}
+        onEdit={() => setEditing(true)}
+      />
     </>
   );
 
@@ -361,6 +366,7 @@ function GroupDraft({
   group: AgentGroup;
   profiles: ProfileSummary[];
 }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const roster = useMemo(() => groupRoster(group, profiles), [group, profiles]);
@@ -440,7 +446,10 @@ function GroupDraft({
     <ChatPageColumn centered>
       {/* Pinned to the column's top-right corner, like the cognito toggle in agent chat. */}
       <div className="absolute top-2 right-3 z-20 sm:right-6">
-        <GroupActionsMenu onEdit={() => setEditing(true)} />
+        <GroupActionsMenu
+          canEdit={group.ownerUserId === user?.id}
+          onEdit={() => setEditing(true)}
+        />
       </div>
       <div
         className="mx-auto mb-12 flex w-full max-w-3xl flex-col"

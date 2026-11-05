@@ -15,7 +15,13 @@ import { useSearchParams } from "react-router-dom";
 import { withPanel } from "@/lib/agent-group-panels";
 
 /** Edit group, and the group's shared folder or memory in the side panel, behind one menu. */
-export function GroupActionsMenu({ onEdit }: { onEdit: () => void }) {
+export function GroupActionsMenu({
+  canEdit = true,
+  onEdit,
+}: {
+  canEdit?: boolean;
+  onEdit: () => void;
+}) {
   const [, setSearchParams] = useSearchParams();
 
   const openPanel = (panel: "files" | "memory") =>
@@ -38,10 +44,12 @@ export function GroupActionsMenu({ onEdit }: { onEdit: () => void }) {
         <MoreHorizontalIcon aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onEdit}>
-          <PencilEdit02Icon aria-hidden />
-          Edit group
-        </DropdownMenuItem>
+        {canEdit ? (
+          <DropdownMenuItem onClick={onEdit}>
+            <PencilEdit02Icon aria-hidden />
+            Edit group
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={() => openPanel("files")}>
           <Folder01Icon aria-hidden />
           Files
