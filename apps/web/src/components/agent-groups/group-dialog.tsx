@@ -201,7 +201,7 @@ export function GroupDialog({
   const isOwner = group ? group.ownerUserId === user?.id : true;
   const collaboratorCandidates = (orgMembers?.members ?? []).filter(
     (member) =>
-      member.userId !== group?.ownerUserId &&
+      member.userId !== (group?.ownerUserId ?? user?.id) &&
       !collaboratorUserIds.includes(member.userId)
   );
   const [image, setImage] = useState<ImageAttachment | null | undefined>();
