@@ -14,7 +14,8 @@ import { migrateGroupDatabase } from "./agent-group-store-migrations";
 const SCHEMA = `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
   CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, name TEXT NOT NULL,
-    member_ids TEXT NOT NULL, created_at TEXT NOT NULL);
+    member_ids TEXT NOT NULL, collaborator_ids TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS group_sessions (
     id TEXT PRIMARY KEY,
     group_id TEXT NOT NULL REFERENCES groups (id) ON DELETE CASCADE,
@@ -38,18 +39,23 @@ const LAST_MESSAGE = (column: string) =>
   `(SELECT lm.${column} FROM messages lm WHERE lm.group_id = g.id AND lm.thread_root_id IS NULL
     AND (lm.author_profile_id IS NULL OR lm.content <> '') ORDER BY lm.id DESC LIMIT 1)`;
 
-const GROUP_COLUMNS = `g.id, g.name, g.brief, g.member_ids, g.handles, g.created_at, a.updated_at AS avatar_version,
+const GROUP_COLUMNS = `g.id, g.name, g.brief, g.member_ids, g.collaborator_ids,
+  g.owner_user_id, g.handles, g.created_at, a.updated_at AS avatar_version,
   ${LAST_MESSAGE("content")} AS last_content,
   ${LAST_MESSAGE("author_profile_id")} AS last_author_profile_id,
   ${LAST_MESSAGE("created_at")} AS last_created_at
   FROM groups g LEFT JOIN group_avatars a ON a.group_id = g.id`;
 
-// Joined to groups so every session read is scoped to the group's owner.
+// Joined to groups so every session read is scoped to the group's viewers.
 const SESSION_COLUMNS = `s.id, s.group_id, s.title, s.pinned, s.created_at, s.updated_at
   FROM group_sessions s JOIN groups g ON g.id = s.group_id`;
 
+// Owners and collaborators may read a group; only the owner may change it.
+const GROUP_VIEWER = `(g.owner_user_id = ? OR EXISTS
+  (SELECT 1 FROM json_each(g.collaborator_ids) c WHERE c.value = ?))`;
+
 interface GroupRow {
-  avatar_version: string | null;
+  collaborator_ids: string;
   brief: string;
   created_at: string;
   handles: string;
@@ -59,6 +65,7 @@ interface GroupRow {
   last_created_at: string | null;
   member_ids: string;
   name: string;
+  owner_user_id: string;
 }
 
 interface SessionRow {
@@ -143,11 +150,14 @@ export function closeAgentGroupDatabases(): void {
 }
 
 function toGroup(row: GroupRow): AgentGroup {
-  // SAFETY: member_ids is only ever written by this store as a JSON string array.
+  // SAFETY: member_ids and collaborator_ids are only ever written by this store
+  // as JSON string arrays.
   const memberIds = JSON.parse(row.member_ids) as string[];
+  const collaboratorUserIds = JSON.parse(row.collaborator_ids) as string[];
 
   return {
     avatarVersion: row.avatar_version,
+    collaboratorUserIds,
     brief: row.brief,
     createdAt: row.created_at,
     // SAFETY: only this store writes handles, as a JSON object of strings.
@@ -162,6 +172,7 @@ function toGroup(row: GroupRow): AgentGroup {
             createdAt: row.last_created_at,
           },
     memberIds,
+    ownerUserId: row.owner_user_id,
     name: row.name,
   };
 }
@@ -203,10 +214,10 @@ function toMessage(row: MessageRow): AgentGroupMessage {
 export function listAgentGroups(orgId: string, ownerId: string): AgentGroup[] {
   return withGroupDb(orgId, (db) =>
     db
-      .query<GroupRow, [string]>(
-        `SELECT ${GROUP_COLUMNS} WHERE g.owner_user_id = ? ORDER BY g.created_at DESC`
+      .query<GroupRow, [string, string]>(
+        `SELECT ${GROUP_COLUMNS} WHERE ${GROUP_VIEWER} ORDER BY g.created_at DESC`
       )
-      .all(ownerId)
+      .all(ownerId, ownerId)
       .map(toGroup)
   );
 }
@@ -218,10 +229,10 @@ export function getAgentGroup(
 ): AgentGroup | null {
   const row = withGroupDb(orgId, (db) =>
     db
-      .query<GroupRow, [string, string]>(
-        `SELECT ${GROUP_COLUMNS} WHERE g.id = ? AND g.owner_user_id = ?`
+      .query<GroupRow, [string, string, string]>(
+        `SELECT ${GROUP_COLUMNS} WHERE g.id = ? AND ${GROUP_VIEWER}`
       )
-      .get(groupId, ownerId)
+      .get(groupId, ownerId, ownerId)
   );
 
   return row ? toGroup(row) : null;
@@ -233,23 +244,26 @@ export function createAgentGroup(
   name: string,
   memberIds: string[],
   brief = "",
-  handles: Record<string, string> = {}
+  handles: Record<string, string> = {},
+  collaboratorUserIds: string[] = []
 ): AgentGroup {
   const group: AgentGroup = {
     avatarVersion: null,
     brief,
+    collaboratorUserIds,
     createdAt: new Date().toISOString(),
     handles,
     id: randomUUID(),
     lastMessage: null,
     memberIds,
     name,
+    ownerUserId: ownerId,
   };
 
   withGroupDb(orgId, (db) =>
     db
       .query(
-        "INSERT INTO groups (id, owner_user_id, name, brief, member_ids, handles, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO groups (id, owner_user_id, name, brief, member_ids, collaborator_ids, handles, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         group.id,
@@ -257,6 +271,7 @@ export function createAgentGroup(
         group.name,
         brief,
         JSON.stringify(memberIds),
+        JSON.stringify(collaboratorUserIds),
         JSON.stringify(handles),
         group.createdAt
       )
@@ -276,19 +291,21 @@ export function updateAgentGroup(
   name: string,
   memberIds: string[],
   brief = "",
-  handles: Record<string, string> = {}
+  handles: Record<string, string> = {},
+  collaboratorUserIds: string[] = []
 ): boolean {
   return withGroupDb(
     orgId,
     (db) =>
       db
         .query(
-          "UPDATE groups SET name = ?, brief = ?, member_ids = ?, handles = json_patch(?, handles) WHERE id = ? AND owner_user_id = ?"
+          "UPDATE groups SET name = ?, brief = ?, member_ids = ?, collaborator_ids = ?, handles = json_patch(?, handles) WHERE id = ? AND owner_user_id = ?"
         )
         .run(
           name,
           brief,
           JSON.stringify(memberIds),
+          JSON.stringify(collaboratorUserIds),
           JSON.stringify(handles),
           groupId,
           ownerId
@@ -358,11 +375,11 @@ export function getAgentGroupAvatar(
 ): { bytes: Uint8Array; mediaType: string } | null {
   const row = withGroupDb(orgId, (db) =>
     db
-      .query<{ bytes: Uint8Array; media_type: string }, [string, string]>(
+      .query<{ bytes: Uint8Array; media_type: string }, [string, string, string]>(
         `SELECT a.bytes, a.media_type FROM group_avatars a
-          JOIN groups g ON g.id = a.group_id WHERE g.id = ? AND g.owner_user_id = ?`
+          JOIN groups g ON g.id = a.group_id WHERE g.id = ? AND ${GROUP_VIEWER}`
       )
-      .get(groupId, ownerId)
+      .get(groupId, ownerId, ownerId)
   );
 
   return row ? { bytes: row.bytes, mediaType: row.media_type } : null;
@@ -424,13 +441,13 @@ export function listGroupSessions(
 ): StoredGroupSession[] {
   return withGroupDb(orgId, (db) =>
     db
-      .query<SessionRow, [string, string]>(
+      .query<SessionRow, [string, string, string]>(
         // The newest message id orders by activity exactly; timestamps can tie.
-        `SELECT ${SESSION_COLUMNS} WHERE s.group_id = ? AND g.owner_user_id = ?
+        `SELECT ${SESSION_COLUMNS} WHERE s.group_id = ? AND ${GROUP_VIEWER}
           ORDER BY COALESCE((SELECT MAX(m.id) FROM messages m WHERE m.session_id = s.id), 0) DESC,
             s.created_at DESC`
       )
-      .all(groupId, ownerId)
+      .all(groupId, ownerId, ownerId)
       .map(toSession)
   );
 }
@@ -443,10 +460,10 @@ export function getGroupSession(
 ): StoredGroupSession | null {
   const row = withGroupDb(orgId, (db) =>
     db
-      .query<SessionRow, [string, string, string]>(
-        `SELECT ${SESSION_COLUMNS} WHERE s.id = ? AND s.group_id = ? AND g.owner_user_id = ?`
+      .query<SessionRow, [string, string, string, string]>(
+        `SELECT ${SESSION_COLUMNS} WHERE s.id = ? AND s.group_id = ? AND ${GROUP_VIEWER}`
       )
-      .get(sessionId, groupId, ownerId)
+      .get(sessionId, groupId, ownerId, ownerId)
   );
 
   return row ? toSession(row) : null;

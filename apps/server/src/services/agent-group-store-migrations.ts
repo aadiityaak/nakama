@@ -7,6 +7,7 @@ export function migrateGroupDatabase(db: Database): void {
   addDocumentsColumn(db);
   addMemoryChangesColumn(db);
   addHandlesColumn(db);
+  addCollaboratorColumn(db);
 }
 
 /** Threads came after the first release, so older files lack the column. */
@@ -64,5 +65,18 @@ function addHandlesColumn(db: Database): void {
 
   if (!columns.some((column) => column.name === "handles")) {
     db.exec("ALTER TABLE groups ADD COLUMN handles TEXT NOT NULL DEFAULT '{}'");
+  }
+}
+
+/** Human collaborators came after groups had a single owner. */
+function addCollaboratorColumn(db: Database): void {
+  const columns = db
+    .query<{ name: string }, []>("PRAGMA table_info(groups)")
+    .all();
+
+  if (!columns.some((column) => column.name === "collaborator_ids")) {
+    db.exec(
+      "ALTER TABLE groups ADD COLUMN collaborator_ids TEXT NOT NULL DEFAULT '[]'"
+    );
   }
 }

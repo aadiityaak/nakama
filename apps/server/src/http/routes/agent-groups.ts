@@ -248,7 +248,8 @@ export function registerAgentGroupRoutes(
           userId,
           body.name,
           body.memberIds,
-          body.brief
+          body.brief,
+          body.collaboratorUserIds ?? []
         ),
         status
       );
@@ -286,7 +287,8 @@ export function registerAgentGroupRoutes(
           params.groupId,
           body.name,
           body.memberIds,
-          body.brief
+          body.brief,
+          body.collaboratorUserIds
         ),
         status
       );

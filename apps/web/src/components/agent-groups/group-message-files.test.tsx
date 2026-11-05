@@ -34,12 +34,14 @@ function NoticeAndPanel({
           group={{
             avatarVersion: null,
             brief: "",
+            collaboratorUserIds: [],
             createdAt: "",
             handles: {},
             id: groupId,
             lastMessage: null,
             memberIds: [],
             name: "Team",
+            ownerUserId: "u1",
           }}
           onClose={() => {}}
         />

@@ -90,6 +90,28 @@ describe("agent group store", () => {
     expect(deleteAgentGroup(ORG_ID, "u2", group.id)).toBe(false);
   });
 
+  test("a collaborator reads the group and chats but cannot change it", () => {
+    const group = createAgentGroup(
+      ORG_ID,
+      "u1",
+      "Shared",
+      ["p1", "p2"],
+      "",
+      {},
+      ["u2"]
+    );
+    const session = createGroupSession(ORG_ID, group.id, "Kickoff");
+
+    expect(getAgentGroup(ORG_ID, "u2", group.id)?.id).toBe(group.id);
+    expect(listAgentGroups(ORG_ID, "u2")).toHaveLength(1);
+    expect(listGroupSessions(ORG_ID, "u2", group.id)).toHaveLength(1);
+    expect(getGroupSession(ORG_ID, "u2", group.id, session.id)).not.toBeNull();
+    expect(updateAgentGroup(ORG_ID, "u2", group.id, "X", ["p1", "p2"])).toBe(
+      false
+    );
+    expect(deleteAgentGroup(ORG_ID, "u2", group.id)).toBe(false);
+  });
+
   test("renames a group and swaps its members", () => {
     const group = createAgentGroup(ORG_ID, "u1", "Launch", ["p1", "p2"]);
 

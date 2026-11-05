@@ -243,6 +243,7 @@ export function useToggleRailPin() {
 
 export interface GroupDraft {
   brief: string;
+  collaboratorUserIds?: string[];
   /** A new image, `null` to remove the current one, `undefined` to keep it. */
   image?: ImageAttachment | null;
   memberIds: string[];
@@ -255,16 +256,28 @@ export function useSaveGroup(groupId?: string) {
   const createdGroupId = useRef<string | null>(null);
 
   return useMutation({
-    mutationFn: async ({ brief, image, memberIds, name }: GroupDraft) => {
+    mutationFn: async ({
+      brief,
+      collaboratorUserIds,
+      image,
+      memberIds,
+      name,
+    }: GroupDraft) => {
       const savedGroupId = groupId ?? createdGroupId.current;
 
       const group = savedGroupId
         ? await client.updateAgentGroup(savedGroupId, {
             brief,
+            collaboratorUserIds,
             memberIds,
             name,
           })
-        : await client.createAgentGroup({ brief, memberIds, name });
+        : await client.createAgentGroup({
+            brief,
+            collaboratorUserIds,
+            memberIds,
+            name,
+          });
 
       if (!savedGroupId) {
         createdGroupId.current = group.id;

@@ -8,6 +8,7 @@ import { slugifyProfileName } from "./profiles";
  */
 export const agentGroupInputSchema = z.object({
   brief: z.string().trim().max(4000).default(""),
+  collaboratorUserIds: z.array(z.string().min(1)).max(20).optional(),
   memberIds: z.array(z.string().min(1)).min(2).max(12),
   name: z.string().trim().min(1).max(80),
 });
@@ -19,6 +20,8 @@ export interface AgentGroup {
   avatarVersion: string | null;
   /** What the group is for; every agent gets it as context. Empty when unset. */
   brief: string;
+  /** Other org members who can open the group; the owner manages them. */
+  collaboratorUserIds: string[];
   createdAt: string;
   /**
    * Each member's @handle, by profile id, fixed when the member joined. It
@@ -34,6 +37,8 @@ export interface AgentGroup {
   } | null;
   memberIds: string[];
   name: string;
+  /** The user who created the group and can edit or delete it. */
+  ownerUserId: string;
 }
 
 /** One completed tool write, in order; null means the entry was absent. */

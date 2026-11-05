@@ -1687,12 +1687,14 @@ test("create group with invalid group photo", async () => {
   const group = {
     avatarVersion: null,
     brief: "",
+    collaboratorUserIds: [],
     createdAt: "2026-10-22T00:00:00Z",
     handles: {},
     id: "group-1",
     lastMessage: null,
     memberIds: ["agent-1", "agent-2"],
     name: "Test group",
+    ownerUserId: "u1",
   };
 
   const draft = {

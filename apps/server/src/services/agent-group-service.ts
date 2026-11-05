@@ -107,11 +107,25 @@ export class AgentGroupService {
     userId: string,
     name: string,
     memberIds: string[],
-    brief = ""
+    brief = "",
+    collaboratorUserIds: string[] = []
   ): Promise<AgentGroup> {
     const handles = await this.assertMembers(orgId, userId, memberIds, {});
+    const collaborators = await this.assertCollaborators(
+      orgId,
+      userId,
+      collaboratorUserIds
+    );
 
-    return createAgentGroup(orgId, userId, name, memberIds, brief, handles);
+    return createAgentGroup(
+      orgId,
+      userId,
+      name,
+      memberIds,
+      brief,
+      handles,
+      collaborators
+    );
   }
 
   /** Members kept from before may have lost access; only new ones are checked. */
@@ -121,11 +135,31 @@ export class AgentGroupService {
     groupId: string,
     name: string,
     memberIds: string[],
-    brief = ""
+    brief = "",
+    collaboratorUserIds?: string[]
   ): Promise<AgentGroup> {
     const group = requireGroup(orgId, userId, groupId);
+
+    if (group.ownerUserId !== userId) {
+      throw new NakamaApiError("Only the group owner can change it.", 403);
+    }
+
     const handles = await this.assertMembers(orgId, userId, memberIds, group);
-    updateAgentGroup(orgId, userId, groupId, name, memberIds, brief, handles);
+    const collaborators =
+      collaboratorUserIds === undefined
+        ? group.collaboratorUserIds
+        : await this.assertCollaborators(orgId, userId, collaboratorUserIds);
+
+    updateAgentGroup(
+      orgId,
+      userId,
+      groupId,
+      name,
+      memberIds,
+      brief,
+      handles,
+      collaborators
+    );
 
     return requireGroup(orgId, userId, groupId);
   }
@@ -601,6 +635,36 @@ export class AgentGroupService {
         return;
       }
     }
+  }
+
+  /** Collaborators must be living members of the same org, never the owner. */
+  private async assertCollaborators(
+    orgId: string,
+    ownerId: string,
+    userIds: string[]
+  ): Promise<string[]> {
+    const unique = [...new Set(userIds)];
+
+    if (unique.length !== userIds.length) {
+      throw new NakamaApiError("Each collaborator can be added once.", 400);
+    }
+
+    if (unique.includes(ownerId)) {
+      throw new NakamaApiError("The owner already has access.", 400);
+    }
+
+    const members = await Promise.all(
+      unique.map((id) => this.db.getOrgMember(orgId, id))
+    );
+
+    if (members.some((member) => !member)) {
+      throw new NakamaApiError(
+        "Each collaborator must be a member of this organization.",
+        400
+      );
+    }
+
+    return unique;
   }
 
   /** Checks the new members and returns the handles to save for them. */
