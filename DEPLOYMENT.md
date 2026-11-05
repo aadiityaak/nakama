@@ -21,10 +21,12 @@ sudo /usr/local/sbin/nakama-deploy --ref production
 | Area | File / runtime path | Verifier check |
 |---|---|---|
 | OMP chat agent preset | `apps/server/src/providers/acp/acp-agent-presets.ts` | bundle contains `command: "omp"` |
-| SSH allowlist (Terate + sweet) | `apps/server/src/providers/acp/acp-command-policy.ts` + `acp-provider.ts` | bundle contains `isApprovedSshCommand` |
+| SSH allowlist (Terate + sweet + minipc) | `apps/server/src/providers/acp/acp-command-policy.ts` + `acp-provider.ts` | bundle contains `isApprovedSshCommand` |
 | Shared agent visibility | `packages/db/src/adapters/sqlite.ts` | `shared_agent_instances` profiles have `shared_with_team=1` |
 | sweet SSH key | `/var/lib/nakama/.ssh/id_sweet_nakama` | file exists |
 | Maman workspace | `/var/lib/nakama/orgs/.../profiles/9bTD4ycUs1Q4RiHOOFIib` | `AGENTS.md`, `MEMORY.md`, coding/server skills |
+| minipc SSH key | `/var/lib/nakama/.ssh/id_minipc_nakama` | file exists |
+| Purnomo workspace | `/var/lib/nakama/orgs/.../profiles/MOsA36s3oD5O3YqSC1UJI` | `AGENTS.md`, `MEMORY.md`, security skills |
 | omp runtime | `/usr/local/bin/omp`, `/var/lib/nakama/.omp` | binary + config exist |
 | Nakama SSH key | `/var/lib/nakama/.ssh/id_terate_nakama` | file exists |
 | Terate workspace | `/var/lib/nakama/orgs/.../profiles/5LX4Q9Bzet2ZP9GzG2eVq` | `AGENTS.md`, `MEMORY.md`, skills |
