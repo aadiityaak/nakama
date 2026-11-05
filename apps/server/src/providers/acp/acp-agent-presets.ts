@@ -22,16 +22,25 @@ const BUNDLED_AGENTS = [
   },
 ] as const;
 
+const OPENCODE_COMMAND = "opencode";
+
 /**
- * OpenCode has no separate ACP adapter: its own CLI speaks ACP. The profile
- * keeps the bare command, and `resolveAcpAgentLaunch` finds the binary when
- * the agent starts.
+ * OpenCode and omp have no separate ACP adapter: their own CLI speaks ACP. A
+ * profile keeps the bare command, and `resolveAcpAgentLaunch` finds the binary
+ * when the agent starts.
  */
-const OPENCODE_AGENT = {
-  agent: { args: ["acp"], command: "opencode" },
-  id: "opencode",
-  label: "OpenCode",
-} as const;
+const CLI_AGENTS = [
+  {
+    agent: { args: ["acp"], command: OPENCODE_COMMAND },
+    id: "opencode",
+    label: "OpenCode",
+  },
+  {
+    agent: { args: ["acp"], command: "omp" },
+    id: "omp",
+    label: "OMP",
+  },
+] as const;
 
 export interface AcpAgentPreset {
   agent: AcpAgentConfig;
@@ -59,14 +68,11 @@ export function listAcpAgentPresets(): AcpAgentPreset[] {
 
   return [
     ...bundled,
-    {
-      agent: {
-        args: [...OPENCODE_AGENT.agent.args],
-        command: OPENCODE_AGENT.agent.command,
-      },
-      id: OPENCODE_AGENT.id,
-      label: OPENCODE_AGENT.label,
-    },
+    ...CLI_AGENTS.map(({ agent, id, label }) => ({
+      agent: { args: [...agent.args], command: agent.command },
+      id,
+      label,
+    })),
   ];
 }
 
@@ -204,7 +210,7 @@ export function resolveAcpAgentLaunch(
     platform: options.platform ?? process.platform,
   };
 
-  const isOpencode = agent.command === OPENCODE_AGENT.agent.command;
+  const isOpencode = agent.command === OPENCODE_COMMAND;
 
   const found =
     (isOpencode

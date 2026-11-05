@@ -45,6 +45,12 @@ describe("ACP agent presets", () => {
 
     expect(opencode?.agent).toEqual(OPENCODE);
   });
+
+  test("always offers OMP in ACP mode, installed or not", () => {
+    const omp = listAcpAgentPresets().find((preset) => preset.id === "omp");
+
+    expect(omp?.agent).toEqual({ args: ["acp"], command: "omp" });
+  });
 });
 
 describe("ACP agent launch", () => {
