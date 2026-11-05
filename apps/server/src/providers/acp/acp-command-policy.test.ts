@@ -17,6 +17,10 @@ describe("ACP command policy", () => {
     expect(isApprovedSshCommand(execute("ssh sweet hostname"))).toBe(true);
   });
 
+  test("approves ssh to the minipc host", () => {
+    expect(isApprovedSshCommand(execute("ssh minipc hostname"))).toBe(true);
+  });
+
   test("approves ssh options before the host", () => {
     expect(
       isApprovedSshCommand(execute("ssh -o BatchMode=yes terate hostname"))

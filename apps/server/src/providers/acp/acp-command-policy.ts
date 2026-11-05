@@ -1,12 +1,16 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 /**
- * These are the machines a chat may reach over SSH: the Terate host keeps
- * read-only snapshots the camera profile needs, and sweet is the DirectAdmin
- * host the coding profile manages. Every other shell command stays denied, so
- * the agent cannot use bash to touch the Nakama host itself.
+ * These are the machines a chat may reach over SSH: Terate keeps read-only
+ * camera snapshots, sweet is the DirectAdmin host, and minipc is the small VPS.
+ * Every other shell command stays denied, so the agent cannot use bash to touch
+ * the Nakama host itself.
  */
-const ALLOWED_HOSTS: Record<string, true> = { sweet: true, terate: true };
+const ALLOWED_HOSTS: Record<string, true> = {
+  minipc: true,
+  sweet: true,
+  terate: true,
+};
 
 export function isApprovedSshCommand(toolCall: acp.ToolCallUpdate): boolean {
   if (toolCall.kind !== "execute") {
