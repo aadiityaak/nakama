@@ -13,7 +13,7 @@ import {
   type AcpAgentProcess,
   startAcpAgentProcess,
 } from "./acp-agent-process";
-import { isTerateSshCommand } from "./acp-command-policy";
+import { isApprovedSshCommand } from "./acp-command-policy";
 import { isEditInsideFolder } from "./acp-edit-policy";
 import { isNakamaToolPermission, moveAcpToolAccess } from "./acp-mcp-tools";
 import { createAcpUpdateMapper } from "./acp-session-events";
@@ -296,11 +296,11 @@ async function getOrStartProcess(
       .client()
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => {
         // Approved: the chat's own Nakama tools, edits inside the profile
-        // folder, and SSH to the Terate host. Every other command is denied.
+        // folder, and SSH to the Terate or sweet host. Every other command is denied.
         const approve =
           isNakamaToolPermission(route.key, params.toolCall) ||
           isEditInsideFolder(options.cwd, params.toolCall) ||
-          isTerateSshCommand(params.toolCall);
+          isApprovedSshCommand(params.toolCall);
 
         const choice = params.options.find((option) =>
           approve

@@ -1,14 +1,14 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 /**
- * The Terate host is the one machine a chat may reach over SSH: the server
- * keeps read-only snapshots (camera stats, logs) that the profile needs.
- * Every other shell command stays denied, so the agent cannot use bash to
- * touch the Nakama host itself.
+ * These are the machines a chat may reach over SSH: the Terate host keeps
+ * read-only snapshots the camera profile needs, and sweet is the DirectAdmin
+ * host the coding profile manages. Every other shell command stays denied, so
+ * the agent cannot use bash to touch the Nakama host itself.
  */
-const ALLOWED_HOST = "terate";
+const ALLOWED_HOSTS: Record<string, true> = { sweet: true, terate: true };
 
-export function isTerateSshCommand(toolCall: acp.ToolCallUpdate): boolean {
+export function isApprovedSshCommand(toolCall: acp.ToolCallUpdate): boolean {
   if (toolCall.kind !== "execute") {
     return false;
   }
@@ -34,7 +34,7 @@ export function isTerateSshCommand(toolCall: acp.ToolCallUpdate): boolean {
     }
 
     if (token === "--") {
-      return argv[index + 1] === ALLOWED_HOST;
+      return ALLOWED_HOSTS[argv[index + 1] ?? ""] === true;
     }
 
     if (token.startsWith("-")) {
@@ -44,7 +44,7 @@ export function isTerateSshCommand(toolCall: acp.ToolCallUpdate): boolean {
       continue;
     }
 
-    return token === ALLOWED_HOST;
+    return ALLOWED_HOSTS[token] === true;
   }
 
   return false;
