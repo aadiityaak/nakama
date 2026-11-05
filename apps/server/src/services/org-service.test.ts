@@ -2058,6 +2058,7 @@ describe("OrgService shared agent selection", () => {
         publication.id,
         "user_other"
       );
+      expect(profile.sharedWithTeam).toBe(true);
 
       const parent = (await db.getOrganizationById("org_parent"))!;
       const team = (await db.getOrganizationById("org_team_a"))!;

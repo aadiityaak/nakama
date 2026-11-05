@@ -3929,6 +3929,7 @@ function createSqliteDatabaseAdapter(db: Database): DatabaseAdapter {
         isDefault: false,
         isSuper: false,
         orgId: teamOrgId,
+        sharedWithTeam: true,
         skillsCuratorConsolidateEnabled: null,
         skillsPostTurnReview: null,
         skillsWriteApproval: null,
