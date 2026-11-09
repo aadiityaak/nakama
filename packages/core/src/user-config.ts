@@ -39,6 +39,7 @@ import {
   parseProviderName,
   type UserProviderName,
 } from "./provider-resolution";
+import { THINKING_EFFORTS } from "./thinking-effort";
 
 export type { UserProviderName } from "./provider-resolution";
 
@@ -733,6 +734,7 @@ export function parseIniWithSections(raw: string): ParsedIniFile {
   const global: Record<string, string> = {};
   const sections: Record<string, Record<string, string>> = {};
   let currentSection: string | null = null;
+  let skipSection = false;
 
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -744,14 +746,23 @@ export function parseIniWithSections(raw: string): ParsedIniFile {
     const sectionMatch = trimmed.match(/^\[([^\]]+)\]$/);
 
     if (sectionMatch) {
-      currentSection = sectionMatch[1]!.trim();
-      sections[currentSection] ??= {};
+      const name = sectionMatch[1]!.trim();
+      // These names resolve to Object.prototype members, so writing keys
+      // under them would pollute every object in the process.
+      skipSection =
+        name === "__proto__" || name === "constructor" || name === "prototype";
+      currentSection = skipSection ? null : name;
+
+      if (currentSection) {
+        sections[currentSection] ??= {};
+      }
+
       continue;
     }
 
     const separator = trimmed.indexOf("=");
 
-    if (separator <= 0) {
+    if (skipSection || separator <= 0) {
       continue;
     }
 
@@ -1051,10 +1062,7 @@ function readThinkingSettings(
 }
 
 function validateThinkingEffort(value: string | undefined): ThinkingEffort {
-  return z
-    .enum(["low", "medium", "high"])
-    .catch(DEFAULT_THINKING_EFFORT)
-    .parse(value);
+  return z.enum(THINKING_EFFORTS).catch(DEFAULT_THINKING_EFFORT).parse(value);
 }
 
 function readTimezone(values: Record<string, string>): string | undefined {

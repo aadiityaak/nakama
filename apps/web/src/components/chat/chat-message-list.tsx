@@ -22,7 +22,7 @@ import {
   Edit03Icon,
   GitBranchIcon,
   MoreHorizontalIcon,
-  Rotate02Icon,
+  RefreshIcon,
 } from "hugeicons-react";
 import {
   forwardRef,
@@ -62,7 +62,6 @@ import { ChatUsageBadge } from "@/components/chat/chat-usage-badge";
 import { DocumentAttachmentPreview } from "@/components/chat/document-attachment-preview";
 import { ImageAttachmentPreview } from "@/components/chat/image-attachment-preview";
 import { PluginDrafts } from "@/components/chat/PluginDraftCard";
-import { TextAttachmentPreview } from "@/components/chat/text-attachment-preview";
 import { readRecord, readString } from "@/components/chat/web-search.shared";
 import { useAuth } from "@/context/use-auth";
 import { useOptionalChatAttachmentPanel } from "@/context/use-chat-attachment-panel";
@@ -95,7 +94,6 @@ import {
 import { sumChatUsage } from "@/lib/chat-usage";
 import { formatError } from "@/lib/client";
 import { formatElapsedSeconds, useElapsedSeconds } from "@/lib/elapsed-time";
-import { isPastedTextDocument } from "@/lib/pasted-text";
 import { canManageAgent } from "@/lib/profiles";
 import { invalidateQueries } from "@/lib/query-client";
 import { queryKeys } from "@/lib/query-keys";
@@ -748,7 +746,7 @@ function TurnArtifacts({
   turnKey: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex w-full min-w-0 flex-col gap-2">
       {artifacts.map((artifact) => {
         const chipId = `${turnKey}:${artifact.ownerProfileId ?? profileId}:${artifact.path}`;
 
@@ -1218,9 +1216,12 @@ function ChatMessageRow({
       className="mr-0 ml-auto min-w-0 max-w-full items-end justify-end overflow-visible"
       from="user"
     >
-      <MessageContent className="ml-auto min-w-0 max-w-full overflow-visible group-[.is-user]:ml-auto">
-        <UserMessageContent message={message} />
-      </MessageContent>
+      <UserMessageAttachments message={message} />
+      {message.content || message.questionnaireAnswers?.length ? (
+        <MessageContent className="ml-auto min-w-0 max-w-full overflow-visible group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl">
+          <UserMessageContent message={message} />
+        </MessageContent>
+      ) : null}
       {canEdit ? (
         <button
           aria-label="Edit message"
@@ -1372,7 +1373,7 @@ function AssistantMessageActions({
           title="Try again"
           type="button"
         >
-          <Rotate02Icon aria-hidden className="size-4" />
+          <RefreshIcon aria-hidden className="size-4" />
         </button>
       ) : null}
       {onBranchMessage && branchCreatedAt ? (
@@ -1436,56 +1437,75 @@ function UserMessageContent({ message }: { message: ChatListItem }) {
     );
   }
 
-  const pastedTextDocuments =
-    message.documents?.filter((document) =>
-      isPastedTextDocument(document.filename, document.mediaType)
-    ) ?? [];
+  return message.content ? (
+    <p className="whitespace-pre-wrap break-words text-foreground">
+      {message.content}
+    </p>
+  ) : null;
+}
 
-  const otherDocuments =
-    message.documents?.filter(
-      (document) => !isPastedTextDocument(document.filename, document.mediaType)
-    ) ?? [];
+/** Files sit above the bubble on the right, apart from the text. */
+function UserMessageAttachments({ message }: { message: ChatListItem }) {
+  const otherDocuments = message.documents ?? [];
+
+  if (
+    !(
+      otherDocuments.length ||
+      message.images?.length ||
+      message.imageAttachments?.length
+    )
+  ) {
+    return null;
+  }
 
   return (
-    <div className="space-y-2">
+    <div className="ml-auto flex w-full max-w-sm flex-col gap-2">
       {message.imageAttachments?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {message.imageAttachments.map((image) => (
-            <ImageAttachmentPreview
-              description={image.description}
-              key={
-                image.url ??
-                `image-attachment-${message.id}-${image.description ?? "unnamed"}`
-              }
-              url={image.url}
-            />
-          ))}
+        <div className="flex w-full min-w-0 flex-col gap-2">
+          {message.imageAttachments.map((image, index) =>
+            image.url ? (
+              <div className="space-y-2" key={image.url}>
+                <DocumentAttachmentPreview
+                  document={{
+                    filename: `Image ${index + 1}`,
+                    mediaType: image.mediaType,
+                    url: image.url,
+                  }}
+                />
+                {image.description?.trim() ? (
+                  <p className="whitespace-pre-wrap text-sm">
+                    {image.description.trim()}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <ImageAttachmentPreview
+                description={image.description}
+                key={image.description}
+              />
+            )
+          )}
         </div>
       ) : null}
       {message.images?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {message.images.map((image) => (
-            <img
-              alt=""
-              className="max-h-40 max-w-full rounded-md border border-border object-contain"
+        <div className="flex w-full min-w-0 flex-col gap-2">
+          {message.images.map((image, index) => (
+            <DocumentAttachmentPreview
+              document={{
+                attachmentId: /^\/v1\/attachments\/([^/]+)\/content$/.exec(
+                  image.url
+                )?.[1],
+                filename: `Image ${index + 1}`,
+                mediaType: image.mediaType,
+                url: image.url,
+              }}
               key={image.url}
-              src={image.url}
-            />
-          ))}
-        </div>
-      ) : null}
-      {pastedTextDocuments.length ? (
-        <div className="flex flex-wrap gap-2">
-          {pastedTextDocuments.map((document) => (
-            <TextAttachmentPreview
-              filename={document.filename}
-              key={`${document.filename}-${document.mediaType}`}
             />
           ))}
         </div>
       ) : null}
       {otherDocuments.length ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full min-w-0 flex-col gap-2">
           {otherDocuments.map((document) => (
             <DocumentAttachmentPreview
               document={document}
@@ -1493,11 +1513,6 @@ function UserMessageContent({ message }: { message: ChatListItem }) {
             />
           ))}
         </div>
-      ) : null}
-      {message.content ? (
-        <p className="whitespace-pre-wrap break-words text-foreground">
-          {message.content}
-        </p>
       ) : null}
     </div>
   );

@@ -7,6 +7,7 @@ import {
 } from "@nakama/core";
 import {
   defaultDiscoveryBaseUrl,
+  isDiscoveryModelProvider,
   NETRA_AGENT_MODEL_ID,
   resolveNetraModelId,
 } from "@nakama/core/discovery-providers";
@@ -316,7 +317,8 @@ export function getModelsForProviderInstance(
     );
   }
 
-  if (instance.type === "openai_compatible") {
+  // Netra returns above; other discovery providers list only the saved models.
+  if (isDiscoveryModelProvider(instance.type)) {
     const entries = instance.customModels ?? [];
 
     return annotate(
@@ -621,6 +623,8 @@ export async function fetchRemoteOpenAIModels(
   const client = new OpenAI({
     apiKey: apiKey || "not-needed",
     baseURL: normalized,
+    maxRetries: 0,
+    timeout: MODEL_LIST_TIMEOUT_MS,
   });
 
   try {
@@ -770,6 +774,17 @@ export async function fetchNetraModels(
     }));
 }
 
+// A model list that takes longer is not coming; say so instead of spinning.
+const MODEL_LIST_TIMEOUT_MS = 10_000;
+
+function endpointHost(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
+}
+
 async function fetchRemoteOpenAIModelsRaw(
   baseUrl: string,
   apiKey: string
@@ -783,9 +798,15 @@ async function fetchRemoteOpenAIModelsRaw(
       headers.set("Authorization", `Bearer ${apiKey}`);
     }
 
-    response = await fetch(`${baseUrl}/models`, { headers });
+    response = await fetch(`${baseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS),
+    });
   } catch {
-    throw new NakamaApiError("Could not reach the model endpoint.", 502);
+    throw new NakamaApiError(
+      `Cannot reach ${endpointHost(baseUrl)}. Check the base URL and that the server is running.`,
+      502
+    );
   }
 
   if (!response.ok) {

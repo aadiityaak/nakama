@@ -5,6 +5,7 @@ import {
   defaultOllamaBaseUrl,
   defaultOllamaLabel,
   isChatgptProviderConnected,
+  isOllamaCloudBaseUrl,
   isOllamaCloudInstance,
   isValidBaseUrl,
   NakamaApiError,
@@ -28,9 +29,13 @@ import type {
   CreateProviderRequest,
   ProviderInstanceSummary,
   ProviderModelOption,
+  ProviderName,
   UpdateProviderRequest,
 } from "@nakama/core/contract";
-import { resolveNetraModelId } from "@nakama/core/discovery-providers";
+import {
+  isDiscoveryModelProvider,
+  resolveNetraModelId,
+} from "@nakama/core/discovery-providers";
 import type { DatabaseAdapter } from "@nakama/db";
 import {
   getDefaultModel,
@@ -107,6 +112,29 @@ export function resolveDefaultModelForInstance(
   instance: ProviderInstance
 ): string {
   return getDefaultModel(instance.type, instance.customModels);
+}
+
+// Catalog providers that keep the user's own model list, on create and update.
+const CATALOG_LIST_TYPES: ReadonlySet<string> = new Set([
+  "openai",
+  "chatgpt",
+  "xai_oauth",
+  "anthropic",
+  "gemini",
+  "deepseek",
+  "doubao",
+  "together",
+  "xiaomi",
+  "meta",
+  "vercel_ai_gateway",
+  "mistral",
+  "qwen",
+  "qwen_cn",
+  "perplexity",
+]);
+
+function keepsUserModelList(type: ProviderName): boolean {
+  return isDiscoveryModelProvider(type) || CATALOG_LIST_TYPES.has(type);
 }
 
 export function buildProviderInstanceFromCreateRequest(
@@ -290,23 +318,7 @@ export function applyProviderInstanceUpdate(
       next.customModels = validateCloudflareCustomModels(request.customModels);
     } else if (instance.type === "opencode_go") {
       next.customModels = validateOpenCodeGoCustomModels(request.customModels);
-    } else if (
-      instance.type === "openai" ||
-      instance.type === "chatgpt" ||
-      instance.type === "xai_oauth" ||
-      instance.type === "anthropic" ||
-      instance.type === "gemini" ||
-      instance.type === "deepseek" ||
-      instance.type === "doubao" ||
-      instance.type === "together" ||
-      instance.type === "xiaomi" ||
-      instance.type === "meta" ||
-      instance.type === "vercel_ai_gateway" ||
-      instance.type === "mistral" ||
-      instance.type === "qwen" ||
-      instance.type === "qwen_cn" ||
-      instance.type === "perplexity"
-    ) {
+    } else if (keepsUserModelList(instance.type)) {
       next.customModels = validateCustomModels(request.customModels);
     }
   }
@@ -332,7 +344,7 @@ function buildProviderFieldsFromRequest(
   if (type === "ollama") {
     const resolvedHostMode: OllamaHostMode =
       request.hostMode ??
-      (request.baseUrl?.includes("ollama.com") ? "cloud" : "local");
+      (isOllamaCloudBaseUrl(request.baseUrl) ? "cloud" : "local");
 
     const baseUrl = normalizeBaseUrl(
       request.baseUrl?.trim() || defaultOllamaBaseUrl(resolvedHostMode)
@@ -475,9 +487,17 @@ function buildProviderFieldsFromRequest(
     return { customModels };
   }
 
-  const customModels =
-    type === "cloudflare" && request.customModels?.length
+  const pickedModel = request.model?.trim();
+
+  // The Add form sends only the picked model for discovery providers.
+  const customModels = request.customModels?.length
+    ? type === "cloudflare"
       ? validateCloudflareCustomModels(request.customModels)
+      : keepsUserModelList(type)
+        ? validateCustomModels(request.customModels)
+        : undefined
+    : pickedModel && isDiscoveryModelProvider(type)
+      ? validateCustomModels([{ default: true, id: pickedModel }])
       : undefined;
 
   const rawBaseUrl = request.baseUrl?.trim();

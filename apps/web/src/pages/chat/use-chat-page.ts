@@ -8,6 +8,7 @@ import type {
   ChatContextUsage,
   ThinkingEffort,
 } from "@nakama/core/contract";
+import { isThinkingEffort } from "@nakama/core/thinking-effort";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -464,6 +465,7 @@ export function useChatPage() {
     activeModelSupportsThinking,
     currentModelSelection,
     providerModelGroups,
+    savedThinkingEffort,
     thinkingEffort,
     thinkingEffortDisabled,
     thinkingEffortOptions,
@@ -673,11 +675,11 @@ export function useChatPage() {
         return;
       }
 
-      if (effort !== "low" && effort !== "medium" && effort !== "high") {
+      if (!isThinkingEffort(effort)) {
         return;
       }
 
-      if (!profileId || effort === thinkingEffort) {
+      if (!profileId || effort === savedThinkingEffort) {
         return;
       }
 
@@ -733,7 +735,7 @@ export function useChatPage() {
       acpProfile,
       canManageInstallSettings,
       profileId,
-      thinkingEffort,
+      savedThinkingEffort,
       busy,
       saveThinkingSettingsMutation,
       session,
@@ -845,8 +847,9 @@ export function useChatPage() {
         const nextSession = client.createChatSession(sessionId, channel);
         let listItems = chatMessagesToListItems(storedMessages, messageMeta);
 
-        const storedFailedTurn =
-          channel === "web" ? readFailedChatTurn(sessionId) : null;
+        // This page stores a failed turn for any chat it can send in, and a
+        // retry branch keeps cli or task, so read it whatever the channel.
+        const storedFailedTurn = readFailedChatTurn(sessionId);
 
         if (storedFailedTurn) {
           listItems = appendFailedTurnIfNeeded(listItems, storedFailedTurn);
@@ -1717,7 +1720,14 @@ export function useChatPage() {
       setBranchingMessageId(anchorId);
       setError(null);
 
+      // Opening another chat bumps this, so a branch or session that arrives
+      // after the user left does not take over the chat they are on now.
+      const loadId = sessionLoadRef.current;
+      const isCurrentChat = () => sessionLoadRef.current === loadId;
+
       try {
+        // A first reply has no checkpoint, so its retry is a new web chat.
+        let retryChannel: AgentChannel = "web";
         let retrySession: RemoteChatSession;
         let initialMessages: ChatListItem[] = [];
 
@@ -1728,18 +1738,32 @@ export function useChatPage() {
             sessionId: session.id,
           });
 
-          retrySession = client.createChatSession(result.sessionId, "web");
+          if (!isCurrentChat()) {
+            return;
+          }
+
+          // The server copies the source's channel into the branch.
+          retryChannel = result.channel;
+          retrySession = client.createChatSession(
+            result.sessionId,
+            retryChannel
+          );
           initialMessages = plan.initialMessages;
         } else {
-          retrySession = await client.createSession("web", {
+          retrySession = await client.createSession(retryChannel, {
             cognito: cognitoRef.current || undefined,
             model: sessionModel ?? undefined,
             profileId,
             thinkingEffort: sessionThinkingEffort ?? undefined,
           });
+
+          if (!isCurrentChat()) {
+            return;
+          }
         }
 
         setSession(retrySession);
+        setSessionChannel(retryChannel);
 
         if (cognitoRef.current) {
           activeSessionIdRef.current = retrySession.id;
@@ -1753,7 +1777,9 @@ export function useChatPage() {
           sessionOverride: retrySession,
         });
       } catch (err) {
-        setError(formatError(err));
+        if (isCurrentChat()) {
+          setError(formatError(err));
+        }
       } finally {
         setBranchingMessageId(null);
       }

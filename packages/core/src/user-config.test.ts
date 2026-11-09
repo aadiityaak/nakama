@@ -16,6 +16,7 @@ import {
   loadUserConfig,
   loadUserWebPublicUrl,
   normalizeProviderInstanceLabel,
+  parseIniWithSections,
   readChatgptOAuthFromInstance,
   readXaiOAuthFromInstance,
   saveUserConfig,
@@ -177,17 +178,19 @@ describe("user config multi-provider", () => {
           wireApi: "responses",
         },
       ],
-      thinkingEffort: "medium",
+      thinkingEffort: "xhigh",
       thinkingEnabled: true,
       timezone: "UTC",
     });
 
     const raw = await readFile(getUserConfigPath(), "utf8");
+    expect(raw).toContain("thinking_effort=xhigh");
     expect(raw).toContain(`[provider.${openaiId}]`);
     expect(raw).toContain("label=Ollama");
     expect(raw).toContain("default_provider_id=");
 
     const loaded = await loadUserConfig();
+    expect(loaded?.thinkingEffort).toBe("xhigh");
     expect(loaded?.providers).toHaveLength(2);
     expect(loaded?.defaultProviderId).toBe(openaiId);
     expect(loaded?.providers[1]?.baseUrl).toBe("http://localhost:11434/v1");
@@ -285,6 +288,30 @@ created_at=2026-06-15T00:00:00.000Z
     await expect(loadUserWebPublicUrl()).resolves.toBe(
       "https://gateway.devscale.id/v1"
     );
+  });
+});
+
+describe("parseIniWithSections", () => {
+  test("ignores sections that resolve to Object.prototype members", () => {
+    const parsed = parseIniWithSections(
+      [
+        "timezone = UTC",
+        "[__proto__]",
+        "polluted = yes",
+        "[constructor]",
+        "polluted = yes",
+        "[prototype]",
+        "polluted = yes",
+        "[web_search]",
+        "provider = tavily",
+      ].join("\n")
+    );
+
+    expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+    expect(Object.hasOwn(Object, "polluted")).toBe(false);
+    expect(parsed.global).toEqual({ timezone: "UTC" });
+    expect(Object.keys(parsed.sections)).toEqual(["web_search"]);
+    expect(parsed.sections.web_search).toEqual({ provider: "tavily" });
   });
 });
 
