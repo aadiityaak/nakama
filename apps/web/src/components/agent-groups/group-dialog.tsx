@@ -17,7 +17,9 @@ import { Camera01Icon, Cancel01Icon } from "hugeicons-react";
 import { useRef, useState } from "react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { groupAvatarUrl, useSaveGroup } from "@/hooks/use-agent-groups";
+import { useAuth } from "@/context/use-auth";
 import { useProfilesQuery } from "@/hooks/use-app-queries";
+import { useOrgMembers } from "@/hooks/use-org-members";
 import { formatError } from "@/lib/client";
 import { readFileAsDataUrl } from "@/lib/read-file-as-data-url";
 
@@ -368,11 +370,22 @@ export function GroupDialog({
   onClose: () => void;
   onSaved?: (group: AgentGroup) => void;
 }) {
+  const { activeOrg, user } = useAuth();
   const { data: profiles = [] } = useProfilesQuery();
+  const { data: orgMembers } = useOrgMembers(activeOrg?.id ?? null);
   const save = useSaveGroup(group?.id);
   const [name, setName] = useState(group?.name ?? "");
   const [brief, setBrief] = useState(group?.brief ?? "");
   const [memberIds, setMemberIds] = useState(group?.memberIds ?? []);
+  const [collaboratorUserIds, setCollaboratorUserIds] = useState(
+    group?.collaboratorUserIds ?? []
+  );
+  const isOwner = group ? group.ownerUserId === user?.id : true;
+  const collaboratorCandidates = (orgMembers?.members ?? []).filter(
+    (member) =>
+      member.userId !== (group?.ownerUserId ?? user?.id) &&
+      !collaboratorUserIds.includes(member.userId)
+  );
   const [image, setImage] = useState<ImageAttachment | null | undefined>();
   const [preview, setPreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -442,7 +455,13 @@ export function GroupDialog({
             }
 
             save.mutate(
-              { brief: brief.trim(), image, memberIds, name: name.trim() },
+              {
+                brief: brief.trim(),
+                collaboratorUserIds: isOwner ? collaboratorUserIds : undefined,
+                image,
+                memberIds,
+                name: name.trim(),
+              },
               {
                 onSuccess: (saved) => {
                   onSaved?.(saved);
@@ -482,6 +501,70 @@ export function GroupDialog({
               value={brief}
             />
           </div>
+          {isOwner ? (
+            <div className="flex flex-col gap-2">
+              <label
+                className="font-semibold text-sm"
+                htmlFor="group-collaborator"
+              >
+                Collaborators
+              </label>
+              <p className="text-muted-foreground text-xs">
+                Other members who can open this group. Only you can edit it.
+              </p>
+              {collaboratorUserIds.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {collaboratorUserIds.map((userId) => {
+                    const member = orgMembers?.members.find(
+                      (entry) => entry.userId === userId
+                    );
+
+                    return (
+                      <span
+                        className="flex items-center gap-2 rounded-full bg-muted py-1 pr-2 pl-3 text-sm"
+                        key={userId}
+                      >
+                        {member?.name || member?.email || userId}
+                        <button
+                          aria-label={`Remove collaborator ${member?.email ?? userId}`}
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            setCollaboratorUserIds((current) =>
+                              current.filter((id) => id !== userId)
+                            )
+                          }
+                          type="button"
+                        >
+                          <Cancel01Icon className="size-3.5" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <select
+                className="h-9 rounded-xl border border-input bg-background px-3 text-sm"
+                id="group-collaborator"
+                onChange={(event) => {
+                  const userId = event.target.value;
+
+                  if (userId) {
+                    setCollaboratorUserIds((current) => [...current, userId]);
+                  }
+
+                  event.target.value = "";
+                }}
+                value=""
+              >
+                <option value="">Add a member…</option>
+                {collaboratorCandidates.map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {member.name || member.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <MemberPicker
             memberIds={memberIds}
             onAdd={addMember}

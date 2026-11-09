@@ -33,6 +33,11 @@ const OPENCODE_AGENT = {
   label: "OpenCode",
 } as const;
 
+/** Fork-only CLI agents: their own CLI speaks ACP, same as OpenCode. */
+const EXTRA_CLI_AGENTS = [
+  { agent: { args: ["acp"], command: "omp" }, id: "omp", label: "OMP" },
+] as const;
+
 export interface AcpAgentPreset {
   agent: AcpAgentConfig;
   id: string;
@@ -67,6 +72,11 @@ export function listAcpAgentPresets(): AcpAgentPreset[] {
       id: OPENCODE_AGENT.id,
       label: OPENCODE_AGENT.label,
     },
+    ...EXTRA_CLI_AGENTS.map(({ agent, id, label }) => ({
+      agent: { args: [...agent.args], command: agent.command },
+      id,
+      label,
+    })),
   ];
 }
 
