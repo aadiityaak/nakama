@@ -22,25 +22,16 @@ const BUNDLED_AGENTS = [
   },
 ] as const;
 
-const OPENCODE_COMMAND = "opencode";
-
 /**
- * OpenCode and omp have no separate ACP adapter: their own CLI speaks ACP. A
- * profile keeps the bare command, and `resolveAcpAgentLaunch` finds the binary
- * when the agent starts.
+ * OpenCode has no separate ACP adapter: its own CLI speaks ACP. The profile
+ * keeps the bare command, and `resolveAcpAgentLaunch` finds the binary when
+ * the agent starts.
  */
-const CLI_AGENTS = [
-  {
-    agent: { args: ["acp"], command: OPENCODE_COMMAND },
-    id: "opencode",
-    label: "OpenCode",
-  },
-  {
-    agent: { args: ["acp"], command: "omp" },
-    id: "omp",
-    label: "OMP",
-  },
-] as const;
+const OPENCODE_AGENT = {
+  agent: { args: ["acp"], command: "opencode" },
+  id: "opencode",
+  label: "OpenCode",
+} as const;
 
 export interface AcpAgentPreset {
   agent: AcpAgentConfig;
@@ -68,11 +59,14 @@ export function listAcpAgentPresets(): AcpAgentPreset[] {
 
   return [
     ...bundled,
-    ...CLI_AGENTS.map(({ agent, id, label }) => ({
-      agent: { args: [...agent.args], command: agent.command },
-      id,
-      label,
-    })),
+    {
+      agent: {
+        args: [...OPENCODE_AGENT.agent.args],
+        command: OPENCODE_AGENT.agent.command,
+      },
+      id: OPENCODE_AGENT.id,
+      label: OPENCODE_AGENT.label,
+    },
   ];
 }
 
@@ -109,6 +103,7 @@ export interface AcpAgentLaunchCommand {
 
 /** Only for tests: the server's own values are the default. */
 export interface AcpAgentLaunchOptions {
+  arch?: string;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
 }
@@ -191,6 +186,66 @@ function agentSearchPath(host: Required<AcpAgentLaunchOptions>): string {
     .join(sep);
 }
 
+export const CODEX_NOT_INSTALLED_MESSAGE =
+  "Codex can't run on this Nakama server yet: its program isn't installed here, and Nakama Cloud doesn't include it at the moment. Pick Claude or OpenCode as this profile's chat agent instead. Self-hosting? Use the -full image, or set CODEX_PATH to a codex binary.";
+
+const CODEX_TARGETS = new Map([
+  ["darwin-arm64", "aarch64-apple-darwin"],
+  ["darwin-x64", "x86_64-apple-darwin"],
+  ["linux-arm64", "aarch64-unknown-linux-musl"],
+  ["linux-x64", "x86_64-unknown-linux-musl"],
+  ["win32-arm64", "aarch64-pc-windows-msvc"],
+  ["win32-x64", "x86_64-pc-windows-msvc"],
+]);
+
+/**
+ * Whether the native Codex binary that codex-acp spawns is on this server.
+ * The slim Docker image deletes `@openai/codex-<os>-<arch>` and keeps only
+ * the JavaScript wrapper, which then exits 1 on every chat. This follows the
+ * wrapper's own lookup. An unknown platform counts as installed, so Codex
+ * reports its own error there.
+ */
+function hasCodexBinary(
+  codexAcpEntry: string,
+  host: Required<AcpAgentLaunchOptions>
+): boolean {
+  const key = `${host.platform === "android" ? "linux" : host.platform}-${host.arch}`;
+  const target = CODEX_TARGETS.get(key);
+
+  if (!target) {
+    return true;
+  }
+
+  let codexRoot: string;
+
+  try {
+    codexRoot = dirname(
+      createRequire(codexAcpEntry).resolve("@openai/codex/package.json")
+    );
+  } catch {
+    return false;
+  }
+
+  let vendorRoot = join(codexRoot, "vendor");
+
+  try {
+    vendorRoot = join(
+      dirname(
+        createRequire(join(codexRoot, "package.json")).resolve(
+          `@openai/codex-${key}/package.json`
+        )
+      ),
+      "vendor"
+    );
+  } catch {
+    // Older Codex builds keep the binary in their own vendor folder.
+  }
+
+  const binary = host.platform === "win32" ? "codex.exe" : "codex";
+
+  return existsSync(join(vendorRoot, target, "bin", binary));
+}
+
 function isBareCommand(command: string): boolean {
   return !/[\\/]/.test(command);
 }
@@ -206,11 +261,26 @@ export function resolveAcpAgentLaunch(
   options: AcpAgentLaunchOptions = {}
 ): AcpAgentLaunchCommand {
   const host: Required<AcpAgentLaunchOptions> = {
+    arch: options.arch ?? process.arch,
     env: options.env ?? process.env,
     platform: options.platform ?? process.platform,
   };
 
-  const isOpencode = agent.command === OPENCODE_COMMAND;
+  // A saved Codex agent runs the bundled codex-acp entry. CODEX_PATH replaces
+  // the bundled binary, so only check without it.
+  const codexAcpEntry = agent.args.find((arg) =>
+    /[\\/]@agentclientprotocol[\\/]codex-acp[\\/]/.test(arg)
+  );
+
+  if (
+    codexAcpEntry &&
+    !readEnv(host, "CODEX_PATH") &&
+    !hasCodexBinary(codexAcpEntry, host)
+  ) {
+    throw new Error(CODEX_NOT_INSTALLED_MESSAGE);
+  }
+
+  const isOpencode = agent.command === OPENCODE_AGENT.agent.command;
 
   const found =
     (isOpencode
